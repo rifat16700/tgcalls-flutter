@@ -44,11 +44,21 @@ jobs:
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
           echo "$GITHUB_WORKSPACE/depot_tools" >> $GITHUB_PATH
           
-      - name: Fetch WebRTC for Android
+      - name: Fetch Telegram WebRTC Fork
         run: |
           mkdir webrtc_checkout
           cd webrtc_checkout
-          fetch --nohooks webrtc_android
+          cat << 'EOF' > .gclient
+          solutions = [
+            {
+              "name": "src",
+              "url": "https://github.com/TelegramMessenger/webrtc.git",
+              "deps_file": "DEPS",
+              "managed": False,
+              "custom_deps": {},
+            },
+          ]
+          EOF
           gclient sync
           
       - name: Clone tgcalls
@@ -61,15 +71,18 @@ jobs:
           gn gen out/Release --args='target_os="android" target_cpu="arm64" is_debug=false rtc_include_tests=false rtc_build_examples=false android_static_analysis="off" treat_warnings_as_errors=false use_goma=false'
           ninja -j 4 -C out/Release webrtc
           
-      - name: Setup JNI Build
+      - name: Setup FFI Build
         run: |
           # Ensure target directory exists
           mkdir -p android/app/src/main/cpp
           
-          # Copy tgcalls into our JNI folder
+          # Copy tgcalls into our CPP folder
           cp -r official_tgcalls android/app/src/main/cpp/tgcalls
           
-          # Create a custom CMakeLists.txt for the JNI build that uses the WebRTC source tree
+          # Copy wrapper
+          cp example/native_wrapper/tgcalls_wrapper.cpp android/app/src/main/cpp/tgcalls_wrapper.cpp
+          
+          # Create a custom CMakeLists.txt for the FFI build
           cat << 'EOF' > android/app/src/main/cpp/CMakeLists.txt
           cmake_minimum_required(VERSION 3.10.2)
           project("custom_tgcalls")
@@ -77,11 +90,11 @@ jobs:
           # Include tgcalls source files
           file(GLOB_RECURSE TGCALLS_SRC "tgcalls/tgcalls/*.cpp" "tgcalls/tgcalls/*.c")
 
-          # Create our custom shared library containing the JNI wrapper and tgcalls source
+          # Create our custom shared library containing the FFI wrapper and tgcalls source
           add_library(
                   custom_tgcalls
                   SHARED
-                  tgcalls_jni.cpp
+                  tgcalls_wrapper.cpp
                   ${TGCALLS_SRC}
           )
 
